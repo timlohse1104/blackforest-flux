@@ -16,12 +16,13 @@ Sinopsis:
 python.exe .\src\flux-prompt.py <model>(dev/schnell) <filename> <prompt>
 ```
 
+Example:
 ```powershell
 python.exe .\src\flux-prompt.py "dev" "golden-retriever" "A fluffy golden retriever"
 ```
 
 ## Examples
-![Fluffy Golden Retriever](dist/golden-retriever.png)
+![Fluffy Golden Retriever](images/golden-retriever.png)
 
 ## Ideas
 - [ ] Keep quantized models in memory for faster response times

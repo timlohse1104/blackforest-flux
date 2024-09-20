@@ -107,5 +107,5 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps=4, guidance_sc
 
 image = inference(text_encoder=text_encoder, pipeline=pipeline, prompt=prompt)
 print("\nSaving image...")
-image.save(f"dist/{filename}.png")
+image.save(f"images/{filename}.png")
 print(f"Image generation time: {time.time() - start}")

@@ -1,5 +1,6 @@
 # This script does need torch, diffusers, accelerate, protobuf, sentencepiece to be installed. e.g. 'conda install diffusers'
 # It also needs optimum-quanto, flash-attn, dotenvto be installed. e.g. 'pip install optimum-quanto'
+# See https://huggingface.co/docs/diffusers/v0.9.0/en/api/pipelines/stable_diffusion
 # See also https://huggingface.co/blog/quanto-diffusers
 from transformers import T5EncoderModel
 import time
@@ -29,6 +30,20 @@ print(f"Filename: {filename}")
 default_prompt = "A bear in a forest."
 prompt = sys.argv[3] if len(sys.argv) > 2 else default_prompt
 print(f"Prompt: {prompt}")
+print("\nLoading environment variables...")
+negative_prompt = os.getenv("NEGATIVE_PROMPT")
+print(f"Negative prompt: {negative_prompt}")
+num_inference_steps = int(os.getenv("NUM_INFERENCE_STEPS"))
+print(f"Number of inference steps: {num_inference_steps}")
+guidance_scale = float(os.getenv("GUIDANCE_SCALE"))
+print(f"Guidance scale: {guidance_scale}")
+width = int(os.getenv("WIDTH") or 1024)
+print(f"Width: {width}")
+height = int(os.getenv("HEIGHT") or 1024)
+print(f"Height: {height}")
+num_images_per_prompt = int(os.getenv("NUM_IMAGES_PER_PROMPT"))
+print(f"Number of images per prompt: {num_images_per_prompt}")
+
 
 print("\nDebugging environment...")
 print("Torch version: ", torch.__version__)
@@ -39,7 +54,6 @@ print("CUDA device count: ", torch.cuda.device_count())
 print("CUDA device name: ", torch.cuda.get_device_name())
 
 print("\nLogging into huggingface...")
-# load token from environment variable HUGGING_FACE_API_KEY
 token = os.getenv("HUGGING_FACE_API_KEY")
 if token is None:
     print("HUGGING_FACE_API_KEY is not set")
@@ -57,16 +71,16 @@ t5_encoder = T5EncoderModel.from_pretrained(
     f"black-forest-labs/FLUX.1-{model}", subfolder="text_encoder_2", torch_dtype=torch.bfloat16
 )
 text_encoder = diffusers.DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell",
+    f"black-forest-labs/FLUX.1-{model}",
     text_encoder_2=t5_encoder,
     transformer=None,
     vae=None,
-    revision="refs/pr/7",
+    # revision="refs/pr/7",
 )
 pipeline = diffusers.DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell",
+    f"black-forest-labs/FLUX.1-{model}",
     torch_dtype=torch.bfloat16,
-    revision="refs/pr/1",
+    # revision="refs/pr/1",
     text_encoder_2=None,
     text_encoder=None,
 )
@@ -79,7 +93,7 @@ freeze(pipeline.transformer)
 print(f"Quantizing time: {time.time() - quantizeStart}")
 
 @torch.inference_mode()
-def inference(text_encoder, pipeline, prompt, num_inference_steps=4, guidance_scale=3.5, width=1024, height=1024):
+def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scale, width, height, num_images_per_prompt):
     print("\nEncoding prompt...")
     text_encoder.to("cuda")
     encodingStart = time.time()
@@ -99,13 +113,14 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps=4, guidance_sc
         width=width,
         height=height,
         guidance_scale=guidance_scale,
-        num_inference_steps=num_inference_steps
+        num_inference_steps=num_inference_steps,
+        num_images_per_prompt=num_images_per_prompt
     )
     flush()
     image = output.images[0]
     return image
 
-image = inference(text_encoder=text_encoder, pipeline=pipeline, prompt=prompt)
+image = inference(text_encoder=text_encoder, pipeline=pipeline, prompt=prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, width=width, height=height, num_images_per_prompt=num_images_per_prompt)
 print("\nSaving image...")
 image.save(f"images/{filename}.png")
 print(f"Image generation time: {time.time() - start}")

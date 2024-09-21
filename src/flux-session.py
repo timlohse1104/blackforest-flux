@@ -18,18 +18,18 @@ load_dotenv()
 start = time.time()
 
 if len(sys.argv) < 2:
-  print(f"Usage: python flux-prompt.py <model>(dev / schnell) <filename> <prompt>")
+  print(f"Usage: python flux-session.py <model>(dev / schnell)")
   sys.exit(1)
 
 
 print("Setting variables...")
 model = sys.argv[1]
 print(f"Model verison: {model}")
-filename = sys.argv[2]
-print(f"Filename: {filename}")
-default_prompt = "A bear in a forest."
-prompt = sys.argv[3] if len(sys.argv) > 2 else default_prompt
-print(f"Prompt: {prompt}")
+# filename = sys.argv[2]
+# print(f"Filename: {filename}")
+# default_prompt = "A bear in a forest."
+# prompt = sys.argv[3] if len(sys.argv) > 2 else default_prompt
+# print(f"Prompt: {prompt}")
 print("\nLoading environment variables...")
 negative_prompt = os.getenv("NEGATIVE_PROMPT")
 print(f"Negative prompt: {negative_prompt}")
@@ -93,7 +93,7 @@ freeze(pipeline.transformer)
 print(f"Quantizing time: {time.time() - quantizeStart}")
 
 @torch.inference_mode()
-def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scale, width, height, num_images_per_prompt):
+def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scale, width, height, num_images_per_prompt, filename):
     print("\nEncoding prompt...")
     text_encoder.to("cuda")
     encodingStart = time.time()
@@ -118,9 +118,22 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scal
     )
     flush()
     image = output.images[0]
-    return image
+    print("\nSaving image...")
+    image.save(f"dist/{filename}.png")
 
-image = inference(text_encoder=text_encoder, pipeline=pipeline, prompt=prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, width=width, height=height, num_images_per_prompt=num_images_per_prompt)
-print("\nSaving image...")
-image.save(f"images/{filename}.png")
-print(f"Image generation time: {time.time() - start}")
+# inference(text_encoder=text_encoder, pipeline=pipeline, prompt=prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, width=width, height=height, num_images_per_prompt=num_images_per_prompt, filename=filename)
+
+
+while True:
+    print("\nCreating an image...")
+    interactiveFilename = input("Enter the filename or type 'done' to exit: ")
+    if interactiveFilename.lower() == "done":
+        break
+
+    interactivePrompt = input("Enter the prompt or type 'done' to exit: ")
+    if interactivePrompt.lower() == "done":
+        break
+
+    inference(text_encoder=text_encoder, pipeline=pipeline, prompt=interactivePrompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, width=width, height=height, num_images_per_prompt=num_images_per_prompt, filename=interactiveFilename)
+
+print(f"Image generation time: {time.time() - start}. Exiting the program.")

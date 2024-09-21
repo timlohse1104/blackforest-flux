@@ -20,12 +20,12 @@ tbd
 
 Sinopsis:
 ```powershell
-python.exe .\src\flux-prompt.py <model>(dev/schnell) <filename> <prompt>
+python.exe .\src\flux-session.py <model>(dev/schnell)
 ```
 
 Example:
 ```powershell
-python.exe .\src\flux-prompt.py "dev" "golden-retriever" "A fluffy golden retriever"
+python.exe .\src\flux-prompt.py "dev"
 ```
 
 ## Examples

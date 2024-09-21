@@ -32,4 +32,9 @@ python.exe .\src\flux-prompt.py "dev"
 ![Fluffy Golden Retriever](golden-retriever.png)
 
 ## Ideas
-- [ ] Keep quantized models in memory for faster response times
+- [x] Use quantization as performance boost
+- [x] Create a long living session so user is able to create multiple files
+- [x] Make pipe options customizable from .env file
+- [ ] Optional filename leads to auto generated name
+- [ ] Create UI to input prompt and filename (maybe set pipe options)
+- [ ] Extend UI to view all created images

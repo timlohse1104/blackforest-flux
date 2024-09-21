@@ -21,15 +21,9 @@ if len(sys.argv) < 2:
   print(f"Usage: python flux-session.py <model>(dev / schnell)")
   sys.exit(1)
 
-
 print("Setting variables...")
 model = sys.argv[1]
 print(f"Model verison: {model}")
-# filename = sys.argv[2]
-# print(f"Filename: {filename}")
-# default_prompt = "A bear in a forest."
-# prompt = sys.argv[3] if len(sys.argv) > 2 else default_prompt
-# print(f"Prompt: {prompt}")
 print("\nLoading environment variables...")
 negative_prompt = os.getenv("NEGATIVE_PROMPT")
 print(f"Negative prompt: {negative_prompt}")
@@ -120,9 +114,6 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scal
     image = output.images[0]
     print("\nSaving image...")
     image.save(f"dist/{filename}.png")
-
-# inference(text_encoder=text_encoder, pipeline=pipeline, prompt=prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, width=width, height=height, num_images_per_prompt=num_images_per_prompt, filename=filename)
-
 
 while True:
     print("\nCreating an image...")

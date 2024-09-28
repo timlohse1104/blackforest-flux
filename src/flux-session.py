@@ -62,7 +62,9 @@ def flush():
 
 print("\nLoading model...")
 t5_encoder = T5EncoderModel.from_pretrained(
-    f"black-forest-labs/FLUX.1-{model}", subfolder="text_encoder_2", torch_dtype=torch.bfloat16
+    f"black-forest-labs/FLUX.1-{model}",
+    subfolder="text_encoder_2",
+    torch_dtype=torch.bfloat16
 )
 text_encoder = diffusers.DiffusionPipeline.from_pretrained(
     f"black-forest-labs/FLUX.1-{model}",
@@ -95,8 +97,12 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scal
         prompt_embeds,
         pooled_prompt_embeds,
         _,
-    ) = text_encoder.encode_prompt(prompt=prompt, prompt_2=None, max_sequence_length=256)
+    ) = text_encoder.encode_prompt(prompt=prompt, prompt_2=None, max_sequence_length=512)
     text_encoder.to("cpu")
+
+    # Set manual seed for reproducibility
+    # torch.manual_seed(0)
+
     flush()
     print(f"Prompt encoding time: {time.time() - encodingStart}")
 
@@ -111,9 +117,11 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scal
         num_images_per_prompt=num_images_per_prompt
     )
     flush()
-    image = output.images[0]
-    print("\nSaving image...")
-    image.save(f"dist/{filename}.png")
+    images = output.images
+    for i, image in enumerate(images):
+      image_name = f"{filename}({i})"
+      print(f"\nSaving image '{image_name}'...")
+      image.save(f"dist/{image_name}.png")
 
 while True:
     print("\nCreating an image...")

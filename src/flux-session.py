@@ -119,9 +119,21 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scal
     flush()
     images = output.images
     for i, image in enumerate(images):
-      image_name = f"{filename}({i})"
+      if len(images) == 1:
+        image_name = filename
+      else:
+        image_name = f"{filename}({i})"
+
       print(f"\nSaving image '{image_name}'...")
-      image.save(f"dist/{image_name}.png")
+
+      image_name_taken = os.path.exists(f"dist/{image_name}.png")
+      print(f"Image name taken: {image_name_taken}")
+
+      if image_name_taken:
+        print(f"Image name taken. Saving with suffix.")
+        image.save(f"dist/{image_name}-(copy).png")
+      else:
+        image.save(f"dist/{image_name}.png")
 
 while True:
     print("\nCreating an image...")

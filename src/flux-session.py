@@ -18,6 +18,7 @@ from local_logs import log_session, log_debug, log_inference, log_error, log_war
 from local_inputs import input_instruction
 
 
+# Load environment variables from .env file and os
 def load_envs():
   load_dotenv()
   log_debug("Setting variables...")
@@ -31,6 +32,7 @@ def load_envs():
   height = int(os.getenv("HEIGHT") or 1024)
   num_images_per_prompt = int(os.getenv("NUM_IMAGES_PER_PROMPT"))
   debug_session = os.getenv("DEBUG_SESSION").lower() == "true"
+  manual_seed = os.getenv("MANUAL_SEED")
 
   log_debug("\nDebugging environment...")
   log_debug(f"Torch version: {torch.__version__}")
@@ -40,9 +42,10 @@ def load_envs():
   log_debug(f"CUDA device count: {torch.cuda.device_count()}")
   log_debug(f"CUDA device name: {torch.cuda.get_device_name()}")
 
-  return model_variant, negative_prompt, num_inference_steps, guidance_scale, width, height, num_images_per_prompt, debug_session
+  return model_variant, negative_prompt, num_inference_steps, guidance_scale, width, height, num_images_per_prompt, debug_session, manual_seed
 
 
+# Login to huggingface
 def login_huggingface():
   log_debug("\nLogging into huggingface...")
   token = os.getenv("HUGGING_FACE_API_KEY")
@@ -53,68 +56,14 @@ def login_huggingface():
   login(token=token, add_to_git_credential=True)
 
 
+# Flush memory and empty cache
 def flush():
     log_inference("\nFlushing memory...")
     gc.collect()
     torch.cuda.empty_cache()
 
 
-@torch.inference_mode()
-def inference(filename, prompt, text_encoder, pipeline, width, height, guidance_scale, num_inference_steps, num_images_per_prompt):
-    log_inference("\nEncoding prompt...")
-    text_encoder.to("cuda")
-    encodingStart = time.time()
-    (
-        prompt_embeds,
-        pooled_prompt_embeds,
-        _,
-    ) = text_encoder.encode_prompt(prompt=prompt, prompt_2=None, max_sequence_length=512)
-    text_encoder.to("cpu")
-
-    # Set manual seed for reproducibility
-    # torch.manual_seed(0)
-
-    flush()
-    log_inference(f"Prompt encoding time: {time.time() - encodingStart}")
-
-    log_inference("\nGenerating image...")
-    output = pipeline(
-        prompt_embeds=prompt_embeds.bfloat16(),
-        pooled_prompt_embeds=pooled_prompt_embeds.bfloat16(),
-        width=width,
-        height=height,
-        guidance_scale=guidance_scale,
-        num_inference_steps=num_inference_steps,
-        num_images_per_prompt=num_images_per_prompt
-    )
-    flush()
-    images = output.images
-    for i, image in enumerate(images):
-      if len(images) == 1:
-        image_name = filename
-      else:
-        image_name = f"{filename}({i})"
-
-      log_inference(f"\nSaving image '{filename}'...")
-
-      file_path = f"dist/{image_name}.png"
-      new_image_name = image_name
-      image_name_taken = does_file_exist(file_path)
-      while image_name_taken:
-        log_warning(f"File '{file_path}' already exists.")
-        new_image_name = f"{new_image_name}-(copy)"
-        new_file_path = f"dist/{new_image_name}.png"
-        new_image_name_taken = does_file_exist(new_file_path)
-        if new_image_name_taken:
-          log_warning(f"File '{new_file_path}' already exists.")
-          continue
-        else:
-          image_name_taken = False
-          file_path = new_file_path
-
-      image.save(file_path)
-
-
+# Load model and quantize it
 def setup_model(model_variant):
   log_inference("\nLoading model...")
   t5_encoder = T5EncoderModel.from_pretrained(
@@ -147,7 +96,80 @@ def setup_model(model_variant):
   return text_encoder, pipeline
 
 
-def loop_session(debug_session, text_encoder, pipeline, width, height, guidance_scale, num_inference_steps, num_images_per_prompt, negative_prompt):
+# Set manual seed for reproducibility of results
+def handle_manual_seed(manual_seed):
+  seed = None
+
+  if manual_seed != "":
+    seed = int(manual_seed)
+    torch.manual_seed(seed)
+    log_inference(f"\nSet manual seed: {seed}")
+  else:
+    seed = torch.seed()
+    torch.manual_seed(seed)
+    log_inference(f"\nSet random seed: {seed}")
+
+  return seed
+
+
+# Run image generation with given parameters
+@torch.inference_mode()
+def inference(filename, prompt, text_encoder, pipeline, width, height, guidance_scale, num_inference_steps, num_images_per_prompt, manual_seed):
+    log_inference("\nEncoding prompt...")
+    text_encoder.to("cuda")
+    encodingStart = time.time()
+    (
+        prompt_embeds,
+        pooled_prompt_embeds,
+        _,
+    ) = text_encoder.encode_prompt(prompt=prompt, prompt_2=None, max_sequence_length=512)
+    text_encoder.to("cpu")
+
+    seed = handle_manual_seed(manual_seed)
+
+    flush()
+    log_inference(f"Prompt encoding time: {time.time() - encodingStart}")
+
+    log_inference("\nGenerating image...")
+    output = pipeline(
+        prompt_embeds=prompt_embeds.bfloat16(),
+        pooled_prompt_embeds=pooled_prompt_embeds.bfloat16(),
+        width=width,
+        height=height,
+        guidance_scale=guidance_scale,
+        num_inference_steps=num_inference_steps,
+        num_images_per_prompt=num_images_per_prompt
+    )
+    flush()
+    images = output.images
+    for i, image in enumerate(images):
+      if len(images) == 1:
+        image_name = f"{filename}-{seed}"
+      else:
+        image_name = f"{filename}{seed}-{i}"
+
+      log_inference(f"\nSaving image '{filename}'...")
+
+      file_path = f"dist/{image_name}.png"
+      new_image_name = image_name
+      image_name_taken = does_file_exist(file_path)
+      while image_name_taken:
+        log_warning(f"File '{file_path}' already exists.")
+        new_image_name = f"{new_image_name}-(copy)"
+        new_file_path = f"dist/{new_image_name}.png"
+        new_image_name_taken = does_file_exist(new_file_path)
+        if new_image_name_taken:
+          log_warning(f"File '{new_file_path}' already exists.")
+          continue
+        else:
+          image_name_taken = False
+          file_path = new_file_path
+
+      image.save(file_path)
+
+
+# Loop user session with multiple command options
+def loop_session(debug_session, text_encoder, pipeline, width, height, guidance_scale, num_inference_steps, num_images_per_prompt, negative_prompt, manual_seed):
   last_file_name = ""
   last_prompt = ""
   while True:
@@ -165,6 +187,8 @@ def loop_session(debug_session, text_encoder, pipeline, width, height, guidance_
           log_debug(f"|--Width: {width}")
           log_debug(f"|--Height: {height}")
           log_debug(f"|--Number of images per prompt: {num_images_per_prompt}\n")
+          log_debug(f"|--Manual seed: {manual_seed}\n")
+
       if first_attempt:
           user_command = input_instruction("Enter command:\n - 'a' to continue normally by inserting filename and prompt\n - 'b' to continue with advanced settings\nor anything else to exit the session: ")
       else:
@@ -181,6 +205,7 @@ def loop_session(debug_session, text_encoder, pipeline, width, height, guidance_
           width = int(input_instruction("Enter the width: "))
           height = int(input_instruction("Enter the height: "))
           num_images_per_prompt = int(input_instruction("Enter the number of images per prompt: "))
+          manual_seed = int(input_instruction("Enter a manual seed: "))
       elif user_command.lower() == "c":
           pass
       else:
@@ -195,10 +220,12 @@ def loop_session(debug_session, text_encoder, pipeline, width, height, guidance_
          height=height,
          guidance_scale=guidance_scale,
          num_inference_steps=num_inference_steps,
-         num_images_per_prompt=num_images_per_prompt
+         num_images_per_prompt=num_images_per_prompt,
+         manual_seed=manual_seed
       )
 
 
+# Main function
 def main():
   start = time.time()
 
@@ -206,7 +233,7 @@ def main():
     log_session(f"Usage: python flux-session.py <model>(dev / schnell)")
     sys.exit(1)
 
-  model_variant, negative_prompt, num_inference_steps, guidance_scale, width, height, num_images_per_prompt, debug_session = load_envs()
+  model_variant, negative_prompt, num_inference_steps, guidance_scale, width, height, num_images_per_prompt, debug_session, manual_seed = load_envs()
   login_huggingface()
   text_encoder, pipeline = setup_model(model_variant=model_variant)
   loop_session(
@@ -218,7 +245,8 @@ def main():
      guidance_scale=guidance_scale,
      num_inference_steps=num_inference_steps,
      num_images_per_prompt=num_images_per_prompt,
-     negative_prompt=negative_prompt
+     negative_prompt=negative_prompt,
+     manual_seed=manual_seed
   )
 
   log_session(f"\nImage generation time: {time.time() - start}.")

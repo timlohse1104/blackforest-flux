@@ -10,7 +10,7 @@ WIDTH=<num>
 HEIGHT=<num>
 NUM_IMAGES_PER_PROMPT=<num>
 NEGATIVE_PROMPT=<things-you-dont-want-to-see>
-```
+DEBUG_SESSION=<bool>
 For the options see docs at https://huggingface.co/docs/diffusers/v0.9.0/en/api/pipelines/stable_diffusion
 
 ## Installation
@@ -35,6 +35,8 @@ python.exe .\src\flux-prompt.py "dev"
 - [x] Use quantization as performance boost
 - [x] Create a long living session so user is able to create multiple files
 - [x] Make pipe options customizable from .env file
+- [x] Continue session with last prompt
+- [x] Make pipe options customizable from within session
 - [ ] Optional filename leads to auto generated name
 - [ ] Create UI to input prompt and filename (maybe set pipe options)
 - [ ] Extend UI to view all created images

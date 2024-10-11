@@ -14,6 +14,9 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+def does_file_exist(file):
+    return os.path.exists(file)
+
 
 start = time.time()
 
@@ -26,18 +29,12 @@ model = sys.argv[1]
 print(f"Model verison: {model}")
 print("\nLoading environment variables...")
 negative_prompt = os.getenv("NEGATIVE_PROMPT")
-print(f"Negative prompt: {negative_prompt}")
 num_inference_steps = int(os.getenv("NUM_INFERENCE_STEPS"))
-print(f"Number of inference steps: {num_inference_steps}")
 guidance_scale = float(os.getenv("GUIDANCE_SCALE"))
-print(f"Guidance scale: {guidance_scale}")
 width = int(os.getenv("WIDTH") or 1024)
-print(f"Width: {width}")
 height = int(os.getenv("HEIGHT") or 1024)
-print(f"Height: {height}")
 num_images_per_prompt = int(os.getenv("NUM_IMAGES_PER_PROMPT"))
-print(f"Number of images per prompt: {num_images_per_prompt}")
-
+debug_session = os.getenv("DEBUG_SESSION").lower() == "true"
 
 print("\nDebugging environment...")
 print("Torch version: ", torch.__version__)
@@ -124,27 +121,63 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scal
       else:
         image_name = f"{filename}({i})"
 
-      print(f"\nSaving image '{image_name}'...")
+      print(f"\nSaving image '{filename}'...")
 
-      image_name_taken = os.path.exists(f"dist/{image_name}.png")
-      print(f"Image name taken: {image_name_taken}")
+      file_path = f"dist/{image_name}.png"
+      new_image_name = image_name
+      image_name_taken = does_file_exist(file_path)
+      while image_name_taken:
+        print(f"File '{file_path}' already exists.")
+        new_image_name = f"{new_image_name}-(copy)"
+        new_file_path = f"dist/{new_image_name}.png"
+        new_image_name_taken = does_file_exist(new_file_path)
+        if new_image_name_taken:
+          print(f"File '{new_file_path}' already exists.")
+          continue
+        else:
+          image_name_taken = False
+          file_path = new_file_path
 
-      if image_name_taken:
-        print(f"Image name taken. Saving with suffix.")
-        image.save(f"dist/{image_name}-(copy).png")
-      else:
-        image.save(f"dist/{image_name}.png")
+      image.save(file_path)
 
+last_file_name = ""
+last_prompt = ""
 while True:
-    print("\nCreating an image...")
-    interactiveFilename = input("Enter the filename or type 'done' to exit: ")
-    if interactiveFilename.lower() == "done":
-        break
+    first_attempt = last_file_name == "" and last_prompt == "";
+    if first_attempt:
+       print("\nCreating first image...")
+    else:
+       print("\nCreating another image...")
 
-    interactivePrompt = input("Enter the prompt or type 'done' to exit: ")
-    if interactivePrompt.lower() == "done":
-        break
+    if debug_session:
+        print(f"\nCurrent settings:")
+        print(f"|--Negative prompt: {negative_prompt}")
+        print(f"|--Number of inference steps: {num_inference_steps}")
+        print(f"|--Guidance scale: {guidance_scale}")
+        print(f"|--Width: {width}")
+        print(f"|--Height: {height}")
+        print(f"|--Number of images per prompt: {num_images_per_prompt}\n")
+    if first_attempt:
+        user_command = input("Enter command:\n - 'a' to continue normally by inserting filename and prompt\n - 'b' to continue with advanced settings\nor anything else to exit the session: ")
+    else:
+        user_command = input("Enter command:\n - 'a' to continue normally by inserting filename and prompt\n - 'b' to continue with advanced configuration\n - 'c' to continue with last configuration\nor anything else to exit the session: ")
 
-    inference(text_encoder=text_encoder, pipeline=pipeline, prompt=interactivePrompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, width=width, height=height, num_images_per_prompt=num_images_per_prompt, filename=interactiveFilename)
+    if user_command.lower() == "a":
+        last_file_name = input("\nEnter the filename: ")
+        last_prompt = input("Enter the prompt: ")
+    elif user_command.lower() == "b":
+        last_file_name = input("\nEnter the filename: ")
+        last_prompt = input("Enter the prompt: ")
+        num_inference_steps = int(input("Enter the number of inference steps: "))
+        guidance_scale = float(input("Enter the guidance scale: "))
+        width = int(input("Enter the width: "))
+        height = int(input("Enter the height: "))
+        num_images_per_prompt = int(input("Enter the number of images per prompt: "))
+    elif user_command.lower() == "c":
+        pass
+    else:
+       break
+
+    inference(text_encoder=text_encoder, pipeline=pipeline, prompt=last_prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, width=width, height=height, num_images_per_prompt=num_images_per_prompt, filename=last_file_name)
 
 print(f"Image generation time: {time.time() - start}. Exiting the program.")

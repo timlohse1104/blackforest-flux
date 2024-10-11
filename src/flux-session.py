@@ -12,22 +12,22 @@ from huggingface_hub import login
 from optimum.quanto import freeze, qfloat8, quantize
 import os
 from dotenv import load_dotenv
-load_dotenv()
-
-def does_file_exist(file):
-    return os.path.exists(file)
-
+sys.path.append("src/utils")
+from local_os import does_file_exist
+from local_logs import log_session, log_debug, log_inference, log_error, log_warning
+from local_inputs import input_instruction
 
 start = time.time()
 
 if len(sys.argv) < 2:
-  print(f"Usage: python flux-session.py <model>(dev / schnell)")
+  log_session(f"Usage: python flux-session.py <model>(dev / schnell)")
   sys.exit(1)
 
-print("Setting variables...")
+load_dotenv()
+log_debug("Setting variables...")
 model = sys.argv[1]
-print(f"Model verison: {model}")
-print("\nLoading environment variables...")
+log_debug(f"Model verison: {model}")
+log_debug("\nLoading environment variables...")
 negative_prompt = os.getenv("NEGATIVE_PROMPT")
 num_inference_steps = int(os.getenv("NUM_INFERENCE_STEPS"))
 guidance_scale = float(os.getenv("GUIDANCE_SCALE"))
@@ -36,28 +36,28 @@ height = int(os.getenv("HEIGHT") or 1024)
 num_images_per_prompt = int(os.getenv("NUM_IMAGES_PER_PROMPT"))
 debug_session = os.getenv("DEBUG_SESSION").lower() == "true"
 
-print("\nDebugging environment...")
-print("Torch version: ", torch.__version__)
-print("CUDA available: ", torch.cuda.is_available())
-print("CUDA version: ", torch.version.cuda)
-print("CUDNN version: ", torch.backends.cudnn.version())
-print("CUDA device count: ", torch.cuda.device_count())
-print("CUDA device name: ", torch.cuda.get_device_name())
+log_debug("\nDebugging environment...")
+log_debug(f"Torch version: {torch.__version__}")
+log_debug(f"CUDA available: {torch.cuda.is_available()}")
+log_debug(f"CUDA version: {torch.version.cuda}")
+log_debug(f"CUDNN version: {torch.backends.cudnn.version()}")
+log_debug(f"CUDA device count: {torch.cuda.device_count()}")
+log_debug(f"CUDA device name: {torch.cuda.get_device_name()}")
 
-print("\nLogging into huggingface...")
+log_debug("\nLogging into huggingface...")
 token = os.getenv("HUGGING_FACE_API_KEY")
 if token is None:
-    print("HUGGING_FACE_API_KEY is not set")
+    log_error("HUGGING_FACE_API_KEY is not set")
     sys.exit(1)
 
 login(token=token, add_to_git_credential=True)
 
 def flush():
-    print("\nFlushing memory...")
+    log_inference("\nFlushing memory...")
     gc.collect()
     torch.cuda.empty_cache()
 
-print("\nLoading model...")
+log_inference("\nLoading model...")
 t5_encoder = T5EncoderModel.from_pretrained(
     f"black-forest-labs/FLUX.1-{model}",
     subfolder="text_encoder_2",
@@ -80,14 +80,14 @@ pipeline = diffusers.DiffusionPipeline.from_pretrained(
 pipeline.enable_model_cpu_offload()
 
 quantizeStart = time.time()
-print("\nQuantizing model...")
+log_inference("\nQuantizing model...")
 quantize(pipeline.transformer, weights=qfloat8)
 freeze(pipeline.transformer)
-print(f"Quantizing time: {time.time() - quantizeStart}")
+log_inference(f"Quantizing time: {time.time() - quantizeStart}")
 
 @torch.inference_mode()
 def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scale, width, height, num_images_per_prompt, filename):
-    print("\nEncoding prompt...")
+    log_inference("\nEncoding prompt...")
     text_encoder.to("cuda")
     encodingStart = time.time()
     (
@@ -101,9 +101,9 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scal
     # torch.manual_seed(0)
 
     flush()
-    print(f"Prompt encoding time: {time.time() - encodingStart}")
+    log_inference(f"Prompt encoding time: {time.time() - encodingStart}")
 
-    print("\nGenerating image...")
+    log_inference("\nGenerating image...")
     output = pipeline(
         prompt_embeds=prompt_embeds.bfloat16(),
         pooled_prompt_embeds=pooled_prompt_embeds.bfloat16(),
@@ -121,18 +121,18 @@ def inference(text_encoder, pipeline, prompt, num_inference_steps, guidance_scal
       else:
         image_name = f"{filename}({i})"
 
-      print(f"\nSaving image '{filename}'...")
+      log_inference(f"\nSaving image '{filename}'...")
 
       file_path = f"dist/{image_name}.png"
       new_image_name = image_name
       image_name_taken = does_file_exist(file_path)
       while image_name_taken:
-        print(f"File '{file_path}' already exists.")
+        log_warning(f"File '{file_path}' already exists.")
         new_image_name = f"{new_image_name}-(copy)"
         new_file_path = f"dist/{new_image_name}.png"
         new_image_name_taken = does_file_exist(new_file_path)
         if new_image_name_taken:
-          print(f"File '{new_file_path}' already exists.")
+          log_warning(f"File '{new_file_path}' already exists.")
           continue
         else:
           image_name_taken = False
@@ -145,34 +145,34 @@ last_prompt = ""
 while True:
     first_attempt = last_file_name == "" and last_prompt == "";
     if first_attempt:
-       print("\nCreating first image...")
+       log_session("\nCreating first image...")
     else:
-       print("\nCreating another image...")
+       log_session("\nCreating another image...")
 
     if debug_session:
-        print(f"\nCurrent settings:")
-        print(f"|--Negative prompt: {negative_prompt}")
-        print(f"|--Number of inference steps: {num_inference_steps}")
-        print(f"|--Guidance scale: {guidance_scale}")
-        print(f"|--Width: {width}")
-        print(f"|--Height: {height}")
-        print(f"|--Number of images per prompt: {num_images_per_prompt}\n")
+        log_debug(f"\nCurrent settings:")
+        log_debug(f"|--Negative prompt: {negative_prompt}")
+        log_debug(f"|--Number of inference steps: {num_inference_steps}")
+        log_debug(f"|--Guidance scale: {guidance_scale}")
+        log_debug(f"|--Width: {width}")
+        log_debug(f"|--Height: {height}")
+        log_debug(f"|--Number of images per prompt: {num_images_per_prompt}\n")
     if first_attempt:
-        user_command = input("Enter command:\n - 'a' to continue normally by inserting filename and prompt\n - 'b' to continue with advanced settings\nor anything else to exit the session: ")
+        user_command = input_instruction("Enter command:\n - 'a' to continue normally by inserting filename and prompt\n - 'b' to continue with advanced settings\nor anything else to exit the session: ")
     else:
-        user_command = input("Enter command:\n - 'a' to continue normally by inserting filename and prompt\n - 'b' to continue with advanced configuration\n - 'c' to continue with last configuration\nor anything else to exit the session: ")
+        user_command = input_instruction("Enter command:\n - 'a' to continue normally by inserting filename and prompt\n - 'b' to continue with advanced configuration\n - 'c' to continue with last configuration\nor anything else to exit the session: ")
 
     if user_command.lower() == "a":
-        last_file_name = input("\nEnter the filename: ")
-        last_prompt = input("Enter the prompt: ")
+        last_file_name = input_instruction("\nEnter the filename: ")
+        last_prompt = input_instruction("Enter the prompt: ")
     elif user_command.lower() == "b":
-        last_file_name = input("\nEnter the filename: ")
-        last_prompt = input("Enter the prompt: ")
-        num_inference_steps = int(input("Enter the number of inference steps: "))
-        guidance_scale = float(input("Enter the guidance scale: "))
-        width = int(input("Enter the width: "))
-        height = int(input("Enter the height: "))
-        num_images_per_prompt = int(input("Enter the number of images per prompt: "))
+        last_file_name = input_instruction("\nEnter the filename: ")
+        last_prompt = input_instruction("Enter the prompt: ")
+        num_inference_steps = int(input_instruction("Enter the number of inference steps: "))
+        guidance_scale = float(input_instruction("Enter the guidance scale: "))
+        width = int(input_instruction("Enter the width: "))
+        height = int(input_instruction("Enter the height: "))
+        num_images_per_prompt = int(input_instruction("Enter the number of images per prompt: "))
     elif user_command.lower() == "c":
         pass
     else:
@@ -180,4 +180,5 @@ while True:
 
     inference(text_encoder=text_encoder, pipeline=pipeline, prompt=last_prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, width=width, height=height, num_images_per_prompt=num_images_per_prompt, filename=last_file_name)
 
-print(f"Image generation time: {time.time() - start}. Exiting the program.")
+log_session(f"\nImage generation time: {time.time() - start}.")
+log_session("\nSession ended. Exiting...")
